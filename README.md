@@ -104,7 +104,7 @@ python client.py --help
 This project is licensed under the GNU General Public License v3.0.
 See the LICENSE file or visit https://www.gnu.org/licenses/gpl-3.0.en.html for details.
 
-10. Contributing
+## 9. Contributing
 Contributions are welcome! Please feel free to fork the repository, make changes, and submit pull requests. For major changes, please open an issue first to discuss what you would like to change.  
 
 
