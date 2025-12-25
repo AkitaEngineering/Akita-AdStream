@@ -4,6 +4,7 @@
 # License: GPLv3
 
 import RNS
+import platformdirs
 import subprocess
 import threading
 import time
@@ -11,12 +12,6 @@ import os
 import signal
 import argparse
 import logging
-
-try:
-    import platformdirs
-except ImportError:
-    print("Error: 'platformdirs' module not found. Please install it using: pip install platformdirs")
-    exit(1)
 
 # --- Configuration ---
 APP_NAME = "AkitaAdStreamClient"
