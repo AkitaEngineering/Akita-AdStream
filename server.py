@@ -4,6 +4,7 @@
 # License: GPLv3
 
 import RNS
+import platformdirs
 import subprocess
 import threading
 import time
@@ -12,13 +13,6 @@ import signal
 import argparse
 import logging
 from dataclasses import dataclass
-
-# Fix for platformdirs import
-try:
-    import platformdirs
-except ImportError:
-    print("Error: 'platformdirs' module not found. Please install it: pip install platformdirs")
-    exit(1)
 
 # --- Configuration Constants ---
 APP_NAME = "AkitaAdStreamServer"
@@ -57,7 +51,6 @@ class ClientSession:
         self.connected_at = time.time()
         self.last_pong = time.time()
         self.bytes_sent = 0
-        self.active = True
 
 class WaylandStreamServer:
     def __init__(self, args):
@@ -80,6 +73,7 @@ class WaylandStreamServer:
         # State Management
         self.lock = threading.RLock()
         self.ffmpeg_process = None
+        self.active_clients_count = 0
         self.clients = {} # Map[link_hash_str, ClientSession]
         
         # Threads
@@ -147,7 +141,7 @@ class WaylandStreamServer:
         except Exception:
             pass
         finally:
-            process.stderr.close()
+            if process.stderr: process.stderr.close()
 
     def _ensure_ffmpeg_running(self):
         """Starts FFmpeg if not running. Must be called under self.lock."""
@@ -183,13 +177,16 @@ class WaylandStreamServer:
 
     def _stop_ffmpeg_if_idle(self):
         """Stops FFmpeg if no clients are connected. Must be called under self.lock."""
-        if not self.clients and self.ffmpeg_process:
+        # We check active_clients_count which is managed by the stream threads
+        if self.active_clients_count <= 0 and self.ffmpeg_process:
             logger.info("No active clients. Stopping FFmpeg.")
             try:
                 self.ffmpeg_process.terminate()
                 self.ffmpeg_process.wait(timeout=3)
             except subprocess.TimeoutExpired:
                 self.ffmpeg_process.kill()
+            except Exception as e:
+                logger.error(f"Error stopping ffmpeg: {e}")
             finally:
                 self.ffmpeg_process = None
 
@@ -234,63 +231,78 @@ class WaylandStreamServer:
             if lid in self.clients:
                 logger.info(f"Link closed: {lid[:8]}")
                 del self.clients[lid]
-                self._stop_ffmpeg_if_idle()
 
     def _stream_client_loop(self, session: ClientSession):
         client_id = session.link_id[:8]
         
+        # 1. Initialization and FFmpeg Startup
         with self.lock:
             if not self._ensure_ffmpeg_running():
                 logger.error(f"Cannot stream to {client_id}: FFmpeg failed.")
                 session.link.teardown()
                 return
-            # Capture specific process ID to detect restarts
+            
+            # Increment reference count
+            self.active_clients_count += 1
+            # Capture specific process ID to detect restarts/crashes
             expected_pid = self.ffmpeg_process.pid
 
         last_ping = time.time()
-        
         logger.info(f"Stream started for {client_id}")
 
         try:
             while self.running and session.link.status == RNS.Link.ACTIVE:
-                # 1. Heartbeat
+                # 2. Heartbeat Logic
                 if time.time() - last_ping > self.settings.heartbeat_interval:
-                    session.link.send(PING_MESSAGE)
-                    last_ping = time.time()
+                    try:
+                        session.link.send(PING_MESSAGE)
+                        last_ping = time.time()
+                    except Exception:
+                        break # Link likely closed
 
-                # 2. Check Process Health
-                # We do this without holding the lock for the whole loop to allow IO
+                # 3. Process Health Check
+                # Accessing globals without lock is generally unsafe, but reading .pid and .poll() 
+                # is atomic enough here to detect a crash without holding the lock every loop iteration.
                 if self.ffmpeg_process is None or self.ffmpeg_process.poll() is not None or self.ffmpeg_process.pid != expected_pid:
                     logger.warning(f"FFmpeg process changed or died. Stopping stream for {client_id}.")
                     break
 
-                # 3. Read & Send
+                # 4. Read & Send Data
                 if self.ffmpeg_process.stdout:
-                    chunk = self.ffmpeg_process.stdout.read(4096)
-                    if chunk:
-                        session.link.send(chunk)
-                        session.bytes_sent += len(chunk)
-                    else:
-                        # EOF or Pipe broken
-                        if self.ffmpeg_process.poll() is not None:
-                            break
-                        time.sleep(0.005)
+                    # Note: stdout.read is blocking.
+                    # We rely on the heartbeat thread to tear down this link if this read hangs indefinitely.
+                    try:
+                        chunk = self.ffmpeg_process.stdout.read(4096)
+                        if chunk:
+                            session.link.send(chunk)
+                            session.bytes_sent += len(chunk)
+                        else:
+                            # EOF or Pipe broken
+                            if self.ffmpeg_process.poll() is not None:
+                                break
+                            time.sleep(0.005)
+                    except Exception as e:
+                        logger.error(f"Read/Send error {client_id}: {e}")
+                        break
                 
-                # Yield slightly
+                # Yield CPU
                 time.sleep(0.001)
 
         except Exception as e:
-            logger.error(f"Stream error {client_id}: {e}")
+            logger.error(f"Stream loop error {client_id}: {e}")
         finally:
+            # 5. Cleanup
             session.link.teardown()
-            # Cleanup is handled by _on_link_closed callback
+            with self.lock:
+                self.active_clients_count -= 1
+                self._stop_ffmpeg_if_idle()
+            logger.info(f"Stream ended for {client_id}")
 
     def _heartbeat_checker(self):
         while self.running:
             time.sleep(2)
             timeout_threshold = time.time() - self.settings.heartbeat_timeout
             
-            # Copy keys to avoid modification during iteration error
             with self.lock:
                 to_kick = []
                 for lid, session in self.clients.items():
@@ -304,6 +316,7 @@ class WaylandStreamServer:
     def _announce_loop(self):
         if not self.running: return
         
+        # App Data format: key:value;key:value
         app_data = f"nickname:{self.args.nickname};res:{self.settings.res[0]}x{self.settings.res[1]};fps:{self.settings.fps}"
         try:
             self.announce_dest.announce(app_data.encode('utf-8'))
