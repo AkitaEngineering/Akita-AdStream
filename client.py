@@ -9,7 +9,6 @@ import subprocess
 import threading
 import time
 import os
-import signal
 import argparse
 import logging
 
@@ -92,20 +91,33 @@ class StreamClient:
         with self.lock:
             if self.ffplay_process:
                 try:
-                    if self.ffplay_process.stdin: self.ffplay_process.stdin.close()
+                    if self.ffplay_process.stdin:
+                        self.ffplay_process.stdin.close()
                     self.ffplay_process.terminate()
                     self.ffplay_process.wait(timeout=1)
-                except:
-                    try: self.ffplay_process.kill()
-                    except: pass
+                except Exception as e:
+                    logger.debug(f"Graceful ffplay terminate failed, killing process: {e}")
+                    try:
+                        self.ffplay_process.kill()
+                    except Exception as e2:
+                        logger.debug(f"Failed to kill ffplay: {e2}")
                 finally:
                     self.ffplay_process = None
 
     def _monitor_ffplay_stderr(self, process):
         try:
             for line in iter(process.stderr.readline, b''):
+                if not line:
+                    break
                 logger.info(f"[FFPLAY]: {line.decode('utf-8', errors='ignore').strip()}")
-        except: pass
+        except Exception as e:
+            logger.debug(f"FFplay stderr monitor error: {e}", exc_info=True)
+        finally:
+            if process.stderr:
+                try:
+                    process.stderr.close()
+                except Exception:
+                    pass
 
     def _on_server_discovered(self, announce_hash, dest_hash, dest_type, app_name, aspects, app_data):
         if self.args.aspect not in aspects: return
@@ -139,7 +151,8 @@ class StreamClient:
                 if ':' in p:
                     k, v = p.split(':', 1)
                     info[k] = v
-        except: pass
+        except Exception as e:
+            logger.debug(f"Failed to parse app_data: {e}")
         return info
 
     def _on_link_established(self, link):
@@ -151,8 +164,10 @@ class StreamClient:
         # Handle Control Messages
         if message == PING_MESSAGE:
             # logger.debug("Ping received")
-            try: packet.link.send(PONG_MESSAGE)
-            except: pass
+            try:
+                packet.link.send(PONG_MESSAGE)
+            except Exception as e:
+                logger.debug(f"Failed to send PONG: {e}")
             return
         
         if message == MAX_CLIENTS_MSG:
@@ -192,8 +207,10 @@ class StreamClient:
         # logger.info("Scanning for servers...")
         # Clear old handler if exists
         if self.announce_handler:
-            try: self.announce_handler.cancel()
-            except: pass
+            try:
+                self.announce_handler.cancel()
+            except Exception as e:
+                logger.debug(f"Failed to cancel previous announce handler: {e}")
             
         RNS.Transport.find_path_to_aspects(self.rns_identity, [self.args.aspect])
         self.announce_handler = RNS.AnnounceHandler(

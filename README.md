@@ -127,4 +127,6 @@ Start the client on receiving machines:
 
 ## 8. License
 
-GPLv3 — Akita Engineering
+- **License:** GNU General Public License v3.0 (GPLv3) — Akita Engineering.
+
+See [LICENSE](LICENSE) for the full license text. SPDX: `GPL-3.0-only`.

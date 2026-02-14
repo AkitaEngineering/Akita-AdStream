@@ -9,7 +9,6 @@ import subprocess
 import threading
 import time
 import os
-import signal
 import argparse
 import logging
 from dataclasses import dataclass
@@ -18,6 +17,7 @@ from dataclasses import dataclass
 APP_NAME = "AkitaAdStreamServer"
 DEFAULT_ASPECT = "video_stream/ad_feed"
 DEFAULT_NICKNAME = "Akita_Server_Main"
+DEFAULT_MAX_CLIENTS = 0  # 0 = unlimited (matches README)
 
 # Protocol Messages
 PING_MESSAGE = b"__AKITA_ADS_PING__"
@@ -135,13 +135,19 @@ class WaylandStreamServer:
         """Reads FFmpeg stderr to log errors."""
         try:
             for line in iter(process.stderr.readline, b''):
+                if not line:
+                    break
                 log_line = line.decode('utf-8', errors='ignore').strip()
                 if log_line:
                     logger.warning(f"[FFMPEG]: {log_line}")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"FFmpeg stderr monitor error: {e}", exc_info=True)
         finally:
-            if process.stderr: process.stderr.close()
+            if process.stderr:
+                try:
+                    process.stderr.close()
+                except Exception:
+                    pass
 
     def _ensure_ffmpeg_running(self):
         """Starts FFmpeg if not running. Must be called under self.lock."""
@@ -197,9 +203,12 @@ class WaylandStreamServer:
         with self.lock:
             if self.settings.max_clients > 0 and len(self.clients) >= self.settings.max_clients:
                 logger.warning(f"Rejecting {client_id}: Max clients reached.")
-                try: link.send(MAX_CLIENTS_MSG)
-                except: pass
-                link.teardown()
+                try:
+                    link.send(MAX_CLIENTS_MSG)
+                except Exception as e:
+                    logger.debug(f"Failed to notify client of max-clients: {e}")
+                finally:
+                    link.teardown()
                 return
 
             logger.info(f"Accepting client: {client_id}")
