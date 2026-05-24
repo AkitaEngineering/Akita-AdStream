@@ -89,6 +89,7 @@ class WaylandStreamServer:
             exit(1)
 
     def initialize_rns(self):
+        self.reticulum = RNS.Reticulum()
         user_dir = platformdirs.user_data_dir(self.args.app_name)
         os.makedirs(user_dir, exist_ok=True)
         id_path = os.path.join(user_dir, "server_identity")

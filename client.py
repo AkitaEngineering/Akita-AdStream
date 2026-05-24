@@ -28,6 +28,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger("AkitaClient")
 
+class ClientAnnounceHandler:
+    def __init__(self, aspect_filter, callback):
+        self.aspect_filter = aspect_filter
+        self.callback = callback
+
+    def received_announce(self, destination_hash, announced_identity, app_data):
+        self.callback(destination_hash, announced_identity, app_data)
+
 class StreamClient:
     def __init__(self, args):
         self.args = args
@@ -42,6 +50,7 @@ class StreamClient:
         self.last_server_info = {}
 
     def initialize_rns(self):
+        self.reticulum = RNS.Reticulum()
         user_dir = platformdirs.user_data_dir(self.args.app_name)
         os.makedirs(user_dir, exist_ok=True)
         id_path = os.path.join(user_dir, "client_identity")
@@ -119,9 +128,7 @@ class StreamClient:
                 except Exception:
                     pass
 
-    def _on_server_discovered(self, announce_hash, dest_hash, dest_type, app_name, aspects, app_data):
-        if self.args.aspect not in aspects: return
-
+    def _on_server_discovered(self, destination_hash, announced_identity, app_data):
         with self.lock:
             if self.server_link and self.server_link.status in [RNS.Link.ACTIVE, RNS.Link.PENDING]:
                 return
@@ -130,13 +137,11 @@ class StreamClient:
             logger.info(f"Discovered: {server_info.get('nickname')} ({server_info.get('res')})")
             
             dest = RNS.Destination(
-                None, RNS.Destination.OUT, RNS.Destination.SINGLE,
-                app_name, self.args.aspect
+                announced_identity, RNS.Destination.OUT, RNS.Destination.SINGLE,
+                self.args.app_name, self.args.aspect
             )
-            dest.hash = dest_hash
-            dest.hexhash = RNS.hexrep(dest_hash, delimit=False)
 
-            self.server_link = RNS.Link(dest, self.rns_identity)
+            self.server_link = RNS.Link(dest)
             self.server_link.set_link_established_callback(self._on_link_established)
             self.server_link.set_link_closed_callback(self._on_link_closed)
             self.server_link.set_packet_callback(self._on_packet)
@@ -204,19 +209,18 @@ class StreamClient:
         with self.lock:
             if self.server_link: return # Already connected
         
-        # logger.info("Scanning for servers...")
         # Clear old handler if exists
         if self.announce_handler:
             try:
-                self.announce_handler.cancel()
+                RNS.Transport.deregister_announce_handler(self.announce_handler)
             except Exception as e:
-                logger.debug(f"Failed to cancel previous announce handler: {e}")
+                logger.debug(f"Failed to deregister previous announce handler: {e}")
             
-        RNS.Transport.find_path_to_aspects(self.rns_identity, [self.args.aspect])
-        self.announce_handler = RNS.AnnounceHandler(
-            aspect_filter=self.args.aspect,
+        self.announce_handler = ClientAnnounceHandler(
+            aspect_filter=f"{self.args.app_name}.{self.args.aspect}",
             callback=self._on_server_discovered
         )
+        RNS.Transport.register_announce_handler(self.announce_handler)
 
     def _stats_loop(self):
         while self.running:
