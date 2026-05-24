@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Akita AdStream Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="logo" style="display: flex; align-items: center; gap: 0.75rem;">
+            <!-- Stylized Dog/Akita or Stream Icon SVG -->
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2L2 7L12 12L22 7L12 2Z" fill="var(--accent-orange)"/>
+                <path d="M2 17L12 22L22 17" stroke="var(--accent-blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M2 12L12 17L22 12" stroke="var(--accent-blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span style="font-weight: 800; letter-spacing: -1px;">
+                <span class="accent-orange">AKITA</span><span class="accent-blue" style="font-weight: 300;">ADSTREAM</span>
+            </span>
+        </div>
+        <div class="status-indicator">
+            <span class="dot" id="server-dot"></span> <span id="server-status-text">Connecting...</span>
+        </div>
+    </nav>
+
+    <main class="dashboard-container">
+        <header class="dashboard-header" style="display: flex; justify-content: space-between; align-items: flex-end;">
+            <div>
+                <h1>Server Overview</h1>
+                <p>Monitor your Reticulum mesh streaming nodes and connected clients in real-time.</p>
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+                <button class="btn" id="btn-start" onclick="controlServer('start')">▶ Start</button>
+                <button class="btn btn-danger" id="btn-stop" onclick="controlServer('stop')">■ Stop</button>
+                <button class="btn btn-primary" onclick="openSettings()">⚙ Settings</button>
+            </div>
+        </header>
+
+        <section class="stats-grid">
+            <div class="stat-card">
+                <h3>Active Clients</h3>
+                <div class="stat-value" id="active-clients">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Resolution</h3>
+                <div class="stat-value" id="resolution">--</div>
+            </div>
+            <div class="stat-card">
+                <h3>Encoder Status</h3>
+                <div class="stat-value" id="encoder-status">Idle</div>
+            </div>
+            <div class="stat-card">
+                <h3>Total Bandwidth</h3>
+                <div class="stat-value" id="bandwidth">0 MB</div>
+            </div>
+        </section>
+
+        <section class="clients-section">
+            <h2>Connected Peers</h2>
+            <div class="table-container">
+                <table id="clients-table">
+                    <thead>
+                        <tr>
+                            <th>Peer Identity (Hash)</th>
+                            <th>Uptime</th>
+                            <th>Data Sent</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="clients-body">
+                        <!-- Populated via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settings-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>App Settings</h2>
+                <button class="modal-close" onclick="closeSettings()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="input-res">Resolution</label>
+                    <select id="input-res" class="form-control" style="appearance: auto;">
+                        <option value="1920x1080">1920x1080 (1080p)</option>
+                        <option value="1280x720">1280x720 (720p)</option>
+                        <option value="854x480">854x480 (480p)</option>
+                        <option value="640x360">640x360 (360p)</option>
+                        <option value="426x240">426x240 (240p)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="input-fps">Framerate (FPS)</label>
+                    <input type="number" id="input-fps" class="form-control" placeholder="20">
+                </div>
+                <div class="form-group">
+                    <label for="input-max">Max Clients (0 for unlimited)</label>
+                    <input type="number" id="input-max" class="form-control" placeholder="0">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeSettings()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveSettings()">Save Configuration</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

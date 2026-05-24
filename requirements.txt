@@ -1,2 +1,6 @@
-rns==1.1.3
-platformdirs==4.8.0
+rns
+platformdirs
+typer
+rich
+fastapi
+uvicorn

@@ -67,6 +67,22 @@ class WaylandStreamServer:
             heartbeat_timeout=args.heartbeat_timeout
         )
         
+        # Load from config.json if it exists
+        try:
+            import json
+            config_dir = platformdirs.user_data_dir(args.app_name)
+            config_path = os.path.join(config_dir, "config.json")
+            if os.path.exists(config_path):
+                with open(config_path, "r") as f:
+                    data = json.load(f)
+                    if "res" in data: self.settings.res = self._parse_res(data["res"])
+                    if "fps" in data: 
+                        self.settings.fps = data["fps"]
+                        self.settings.gop = data["fps"] * args.gop_seconds
+                    if "max_clients" in data: self.settings.max_clients = data["max_clients"]
+        except Exception as e:
+            logger.error(f"Failed to load config.json: {e}")
+        
         self.rns_identity = None
         self.announce_dest = None
         self.running = False
@@ -89,7 +105,7 @@ class WaylandStreamServer:
             exit(1)
 
     def initialize_rns(self):
-        self.reticulum = RNS.Reticulum()
+        self.reticulum = RNS.Reticulum("/tmp/rns_dummy")
         user_dir = platformdirs.user_data_dir(self.args.app_name)
         os.makedirs(user_dir, exist_ok=True)
         id_path = os.path.join(user_dir, "server_identity")

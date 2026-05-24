@@ -12,7 +12,6 @@
 Akita AdStream is a robust Python-based application designed to duplicate the video output of a Linux Wayland host to multiple client machines over a local network. It leverages the Reticulum Network Stack for encrypted, configuration-free service discovery and transport, and FFmpeg/FFplay for low-latency video processing.
 
 This tool is optimized for:
-
 - Digital Signage / Advertising Displays
 - Information Kiosks
 - Passive Screen Mirroring
@@ -22,110 +21,88 @@ This tool is optimized for:
 ## 2. Features
 
 - **Wayland Native:** Uses PipeWire and xdg-desktop-portal for modern Linux screen capture.
+- **Interactive Web Dashboard:** A sleek, dark-themed control panel to monitor bandwidth, connected clients, change resolutions on the fly, and start/stop the stream.
 - **Zero-Config Networking:** Clients automatically discover servers via Reticulum announcements.
-- **Resilient Connectivity:**
-  - **Heartbeats:** Active Ping/Pong mechanism detects dead connections instantly.
-  - **Auto-Reconnect:** Clients automatically search for the server if the link drops.
+- **Resilient Connectivity:** Active Ping/Pong mechanism detects dead connections instantly, and clients automatically search for the server if the link drops.
 - **Resource Efficient:** Configurable resolution, FPS, and CRF to match network conditions.
-- **Thread-Safe Architecture:** Class-based design ensures stability under load.
+- **Persistent Configuration:** Changes made in the web UI survive system reboots.
 
 ---
 
 ## 3. Architecture
 
-### Server (`server.py`)
-
-- **WaylandStreamServer Class:** Manages the main event loop and FFmpeg subprocess.
-- **Session Management:** Tracks connected clients via `ClientSession` objects.
-- **Logic:** Enforces client limits, handles heartbeats, and streams MPEG-TS H.264 video over Reticulum Links.
-
-### Client (`client.py`)
-
-- **StreamClient Class:** Encapsulates discovery and playback logic.
-- **Discovery:** Automatically finds servers broadcasting the configured Aspect.
-- **Playback:** Pipes received data directly to FFplay stdin, handling stream resets and server restarts gracefully.
+- **CLI (`akita/cli.py`):** Uses Typer to handle the `akita` command interface.
+- **Server (`akita/server.py`):** Manages the Wayland capture, FFmpeg subprocess, and client sessions over Reticulum links.
+- **Dashboard (`akita/dashboard.py` & `akita/web/`):** FastAPI backend and vanilla HTML/JS/CSS frontend with modern Glassmorphism aesthetics.
+- **Client (`akita/client.py`):** Encapsulates discovery and playback logic, piping data directly to `ffplay` stdin.
 
 ---
 
-## 4. Prerequisites
+## 4. Setup & Installation
 
-- **Python:** 3.7+
-- **Server:**
-  - Linux (Wayland)
-  - ffmpeg (with PipeWire support)
-  - xdg-desktop-portal
-- **Client:**
-  - ffplay installed and available in PATH
+We provide a streamlined install script that handles system dependencies, the Python virtual environment, Reticulum configuration, and sets up a `systemd` background service for `rnsd`.
 
----
+### Automated Installation (Linux)
 
-## 5. Setup & Installation
+Run the automated installer script:
 
-### Get the Code
+```bash
+chmod +x install.sh
+./install.sh
+```
 
-Download the following files:
-
-- `server.py`
-- `client.py`
-- `requirements.txt`
-
-### Install Python Dependencies
-
-Run on both server and client machines:
-
-    pip install -r requirements.txt
-
-### System Dependencies (Server)
-
-Ensure FFmpeg and Wayland tools are installed  
-(Debian / Ubuntu example):
-
-    sudo apt install ffmpeg xdg-desktop-portal
-
-### System Dependencies (Client)
-
-Ensure FFplay is installed (usually bundled with ffmpeg):
-
-    sudo apt install ffmpeg
+**The installer will:**
+1. Install `ffmpeg`, `pipewire`, and Python 3 tools via `apt` or `pacman`.
+2. Set up an isolated Python `.venv` and install the pip requirements.
+3. Create the `akita` global alias in `~/.local/bin`.
+4. Generate the default Reticulum configuration if it's missing.
+5. Create and start the `rnsd.service` systemd daemon so Reticulum runs in the background on boot.
 
 ---
 
-## 6. Usage
+## 5. Usage
 
-### Server
+### Start the Server & Dashboard
 
-Start the server on the machine you wish to share:
+To start the server and the interactive web dashboard on your host machine:
 
-    python server.py --nickname "LobbyScreen" --res 1280x720 --fps 20
+```bash
+akita server start --nickname "LobbyScreen" --res 1280x720 --fps 20 --web-dashboard
+```
 
-**Note:** On first launch, you must accept the OS-level “Share Screen” permission dialog.
+Once running:
+- **Accept the "Share Screen" prompt:** Wayland requires you to select the monitor to share.
+- **Access the Dashboard:** Open a web browser to [http://localhost:8000](http://localhost:8000) to monitor and control your stream.
 
-### Client
+### Connect a Client
 
-Start the client on receiving machines:
+On a receiving machine, start the client module:
 
-    python client.py
+```bash
+akita client connect
+```
+
+The client will automatically discover the server on the Reticulum mesh and begin streaming video via `ffplay`.
 
 ---
 
-## 7. Configuration Options
+## 6. Configuration Options
 
-### Server Arguments
-
+### Server Options (`akita server start`)
 - `--nickname` — Friendly name for announcements
-- `--res` — Resolution (default: 1280x720)
-- `--fps` — Framerate (default: 20)
-- `--max-clients` — Limit connections (default: 0 / unlimited)
+- `--res` — Resolution (default: `1280x720`)
+- `--fps` — Framerate (default: `20`)
+- `--max-clients` — Limit connections (default: `0` / unlimited)
+- `--web-dashboard / --no-web-dashboard` — Enable/disable the FastAPI web UI
 - `--aspect` — Reticulum aspect string (must match client)
 
-### Client Arguments
-
+### Client Options (`akita client connect`)
 - `--aspect` — Reticulum aspect to search for
 - `--reconnect-delay` — Seconds to wait before reconnecting
 
 ---
 
-## 8. License
+## 7. License
 
 - **License:** GNU General Public License v3.0 (GPLv3) — Akita Engineering.
 
